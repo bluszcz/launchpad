@@ -75,29 +75,14 @@ void* lp2midi(void* nothing)
     printf("waiting for launchpad events\n");
     
     int recv,i;
-    snd_seq_event_t ev;
     
     while (1) {
 	lp_receive(lp);	
-	snd_seq_ev_clear(&ev);			// clean the event to send
-	snd_seq_ev_set_source(&ev, midi_out);	// set the output port number
-	snd_seq_ev_set_subs(&ev);		// broadcast to subscribers
-	snd_seq_ev_set_direct(&ev);		// send now, don't put in queue
-	
-	if (lp->event->row < 0) {
-	    // ctrl event
-	    snd_seq_ev_set_controller(&ev, 1, lp->event->col +104, lp->event->press *127);
-	} else {
-	    // note event
-	    if (lp->event->press) {
-		snd_seq_ev_set_noteon(&ev, 1, lp->event->row *16 +lp->event->col, 127);
-	    } else {
-		snd_seq_ev_set_noteoff(&ev, 1, lp->event->row *16 +lp->event->col, 0);
-	    }
-	}
-	
+	snd_seq_ev_set_source(&lp->event, midi_out);	// set the output port number
+	snd_seq_ev_set_subs(&lp->event);		// broadcast to subscribers
+	snd_seq_ev_set_direct(&lp->event);		// send now, don't put in queue
 	// send the message
-	snd_seq_event_output(midi_client, &ev);
+	snd_seq_event_output(midi_client, &lp->event);
 	snd_seq_drain_output(midi_client);
     }
 }
@@ -110,30 +95,25 @@ void* midi2lp(void* nothing)
 	
 	// get a new event. if there aren't any, wait for one
 	snd_seq_event_input(midi_client, &ev);
-	
-	// normal mode
-	if(ev->data.note.channel == 1) {
+
+	// copy the data to send
+	switch (ev->type) {
 	    
+	case SND_SEQ_EVENT_NOTEON:
+	    lp_send3(lp, NOTE_ON, ev->data.note.note, ev->data.note.velocity);
+	    break;
 	    
-	    // copy the data to send
-	    switch (ev->type) {
-		
-	    case SND_SEQ_EVENT_NOTEON:
-		lp_send3(lp, NOTE_ON, ev->data.note.note, ev->data.note.velocity);
-		break;
-		
-	    case SND_SEQ_EVENT_NOTEOFF:
-		lp_send3(lp, NOTE_OFF, ev->data.note.note, ev->data.note.velocity);
-		break;
-		
-	    case SND_SEQ_EVENT_CONTROLLER:
-		lp_send3(lp, CTRL, ev->data.control.param, ev->data.control.value);
-		break;
-	    }
+	case SND_SEQ_EVENT_NOTEOFF:
+	    lp_send3(lp, NOTE_OFF, ev->data.note.note, ev->data.note.velocity);
+	    break;
 	    
-	    // free the midi event
-	    snd_seq_free_event(ev);
+	case SND_SEQ_EVENT_CONTROLLER:
+	    lp_send3(lp, CTRL, ev->data.control.param, ev->data.control.value);
+	    break;
 	}
+	
+	// free the midi event
+	snd_seq_free_event(ev);
     }
 }
 

@@ -30,7 +30,6 @@
 struct launchpad* lp_register()
 {
     struct launchpad *lp;
-    int bufferlen;
     
     //build the struct
     lp = malloc(sizeof(struct launchpad));
@@ -65,9 +64,7 @@ struct launchpad* lp_register()
     }
   
     //allocate input buffer
-    bufferlen = libusb_get_max_packet_size(libusb_get_device(lp->device), EP_IN);
-    lp->rdata = malloc(sizeof(unsigned char)*bufferlen);
-    lp->rdata_max = bufferlen;
+    lp->rdata = malloc(sizeof(unsigned char)*MAX_PACKET_SIZE);
     
     if (lp->rdata == NULL) {
 	fprintf(stderr,"could not allocate input buffer\n");
@@ -75,26 +72,21 @@ struct launchpad* lp_register()
     }
     
     //allocate output buffer
-    bufferlen = libusb_get_max_packet_size(libusb_get_device(lp->device), EP_OUT);
-    lp->tdata = malloc(sizeof(unsigned char)*bufferlen);
-    lp->tdata_max = bufferlen;
+    lp->tdata = malloc(sizeof(unsigned char)*MAX_PACKET_SIZE);
   
     if (lp->tdata == NULL) {
 	fprintf(stderr,"could not allocate output buffer\n");
 	return NULL;
     }
-
-    lp->event = malloc(sizeof(struct event));
-    if (lp->event == NULL) {
-	fprintf(stderr,"could not allocate event\n");
-	return NULL;
-    }
-    
-    printf("buffers allocated\n");
-    
-    lp_reset(lp);
-    lp_normal_mode(lp,buffer0);
+        
+    // initialize the protocol's state
     lp->prefix = NOTE;
+    lp->parse_at = 0;
+    lp->received = 0;
+
+    // reset launchpad
+    lp_send3(lp,CTRL,0,0);
+    
     return lp;
 }
 
@@ -109,7 +101,6 @@ void lp_deregister(struct launchpad *lp)
     //free allocated memory
     free(lp->rdata);
     free(lp->tdata);
-    free(lp->event);
     
     //close usb
     libusb_exit(NULL);    
@@ -124,33 +115,46 @@ void lp_receive(struct launchpad* lp)
 	libusb_interrupt_transfer(lp->device,
 				  EP_IN,
 				  lp->rdata,
-				  lp->rdata_max,
+				  MAX_PACKET_SIZE,
 				  &lp->received,
 				  0);
     }
-    
+
     // check if the first byte is a prefix byte
     if (lp->rdata[lp->parse_at] == NOTE || lp->rdata[lp->parse_at] == CTRL) {
 	lp->prefix = lp->rdata[lp->parse_at];
 	lp->parse_at++;
     }
     
+    // clean the midi event before writing data
+    snd_seq_ev_clear(&lp->event);
+    
     // first byte: which key is pressed
     switch(lp->prefix) {
     case NOTE:
-	lp->event->row = lp->rdata[lp->parse_at] / 16;
-	lp->event->col = lp->rdata[lp->parse_at] % 16;
+	if (lp->rdata[lp->parse_at+1] == 127) {
+	    // note on
+	    snd_seq_ev_set_noteon(&lp->event, 1, 
+				  lp->rdata[lp->parse_at], 
+				  lp->rdata[lp->parse_at+1]);
+	} else {
+	    // note off
+	    snd_seq_ev_set_noteoff(&lp->event, 1, 
+				   lp->rdata[lp->parse_at], 
+				   lp->rdata[lp->parse_at+1]);
+	}
 	break;
+	
     case CTRL:
-	lp->event->row = -1;
-	lp->event->col = lp->rdata[lp->parse_at] -104;
+	snd_seq_ev_set_controller(&lp->event, 1, 
+				  lp->rdata[lp->parse_at], 
+				  lp->rdata[lp->parse_at+1]);	
 	break;
     }
-    lp->parse_at++;
     
-    // second byte: press or release
-    lp->event->press = (lp->rdata[lp->parse_at] != 0);
-    lp->parse_at++;
+    
+    //move offset to the next event
+    lp->parse_at += 2;
 }
 
 int lp_send(struct launchpad* lp, int size)
@@ -174,77 +178,4 @@ int lp_send3(struct launchpad* lp, unsigned int data0, unsigned int data1, unsig
     lp->tdata[1] = data1;
     lp->tdata[2] = data2;
     return lp_send(lp,3);
-}
-
-unsigned int lp_velocity(enum red red, enum green green, enum led_mode mode)
-{
-    return red + green + mode;
-}
-
-int lp_reset(struct launchpad* lp)
-{
-    return lp_send3(lp,CTRL,0,0);
-}
-
-int lp_allon(struct launchpad* lp, unsigned int intensity)
-{
-    if (intensity > 2) {
-	intensity = 2;
-    }
-    return lp_send3(lp,CTRL,0,125+intensity);
-}
-
-int lp_led(struct launchpad* lp, int row, int col, unsigned int velocity)
-{
-    if (row == -1) {
-	// automap button
-	return lp_send3(lp, CTRL, 104+col, velocity);
-    }
-    
-    // grid or scene button
-    return lp_send3(lp, NOTE, row * 16 + col, velocity);
-}
-
-int lp_setmode(struct launchpad* lp, enum buffer displaying, enum buffer updating, enum bool flashing, enum bool copy)
-{
-    lp->displaying = displaying;
-    lp->updating = updating;
-    lp->flashing = flashing;
-    
-    int v = 32;
-    // displaying buffer
-    v += lp->displaying;
-    // updating buffer
-    v += lp->updating * 4;
-    // flashing
-    v += lp->flashing * 8;
-    // copying the new displaying buffer to the new updating buffer
-    v += copy * 16;
-    
-    return lp_send3(lp,CTRL,0,v);
-}
-
-int lp_normal_mode(struct launchpad* lp, enum buffer buf)
-{
-    return lp_setmode(lp, buf, buf, false, false);
-}
-
-int lp_doublebuffer_mode(struct launchpad* lp, enum bool copy)
-{
-    if (lp->displaying == lp->updating) {
-	// entering the doublebuffer mode
-	switch (lp->displaying) {
-	case buffer0:
-	    return lp_setmode(lp, buffer0, buffer1, false, copy);
-	case buffer1:
-	    return lp_setmode(lp, buffer1, buffer0, false, copy);
-	}
-    } else {
-	return lp_setmode(lp, lp->updating, lp->displaying, false, copy);
-    }
-}
-
-int lp_flashing_mode(struct launchpad* lp, enum bool flashing)
-{
-    return lp_setmode(lp, lp->displaying, lp->updating, flashing, false);
 }
