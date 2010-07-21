@@ -24,87 +24,137 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "liblaunchpad.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <lo/lo.h>
 
-// globals
-char* port = NULL;
-lo_address destination;
-lo_server_thread server;
-struct launchpad* lp;
+#include "liblaunchpad.h"
 
-void lp2osc()
+struct launchpad *lp;
+int done = 0;
+
+void error(int num, const char *m, const char *path);
+
+int generic_handler(const char *path, const char *types, lo_arg **argv,
+					int argc, void *data, void *user_data);
+
+int quit_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				 void *data, void *user_data);
+
+int reset_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				  void *data, void *user_data);
+
+int allon_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				  void *data, void *user_data);
+
+int led_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				void *data, void *user_data);
+
+int main()
 {
-    int recv,i;
+    // Launchpad initialization
+    lp = lp_register();
     
-    while (1) {
-	lp_receive(lp);
-	printf("%d %d %d\n",
-	       lp->event->row,
-	       lp->event->col,
-	       lp->event->press);
-	
-	lo_send(destination, "/lp/press", "iii",
-		lp->event->row,
-		lp->event->col,
-		lp->event->press);
+    /* start a new server on port 7770 */
+    lo_server_thread st = lo_server_thread_new("7770", error);
+    
+    /* add method that will match any path and args */
+    lo_server_thread_add_method(st, NULL, NULL, generic_handler, NULL);
+
+    /* add method that will match the path /quit with no args */
+    lo_server_thread_add_method(st, "/quit", "", quit_handler, NULL);
+    
+    lo_server_thread_add_method(st, "/reset", "", reset_handler, NULL);
+    lo_server_thread_add_method(st, "/allon", "i", allon_handler, NULL);
+	lo_server_thread_add_method(st, "/led", "iiii", led_handler, NULL);	
+    
+    lo_server_thread_start(st);
+    
+    while (!done) {
+	usleep(1000);
     }
-}
-
-void error_handler(int num, const char *msg, const char *where)
-{
-    fprintf(stderr,"OSC error #%d: %s @ %s\n", num, msg, where);
-}
-
-int press_handler(const char *path, const char *types, lo_arg **argv, int argc, lo_message  msg, void *user_data)
-{
-    int row,col,press;
-    row = argv[0]->i;
-    col = argv[1]->i;
-    press = argv[2]->i;
     
     return 0;
 }
 
-void osc2lp()
+void error(int num, const char *msg, const char *path)
 {
-    
+    printf("liblo server error %d in path %s: %s\n", num, path, msg);
+    fflush(stdout);
 }
 
-int main(int argc, char* argv[])
+/* catch any incoming messages and display them. returning 1 means that the
+ * message has not been fully handled and the server should try other methods */
+int generic_handler(const char *path, const char *types, lo_arg **argv,
+					int argc, void *data, void *user_data)
 {
-    int o;
-    char* dest = NULL;
-    
-    // parsing parameters
-    while ((o = getopt(argc,argv,"p:d:")) != -1) {
-	switch (o) {
-	case 'p':
-	    port = optarg;
-	    break;
-	case 'd':
-	    dest = optarg;
-	    break;
-	case '?':
-	    fprintf(stderr, "usage: lposc -p <listening port> -d <destination>\n");
-	    return 0;
-	    break;
+    int i;
+
+    printf("path: <%s>\n", path);
+    for (i=0; i<argc; i++) {
+	printf("arg %d '%c' ", i, types[i]);
+	lo_arg_pp(types[i], argv[i]);
+	printf("\n");
+    }
+    printf("\n");
+    fflush(stdout);
+
+    return 1;
+}
+
+int quit_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				 void *data, void *user_data)
+{
+    done = 1;
+    printf("quiting\n\n");
+    fflush(stdout);
+
+    return 0;
+}
+
+int reset_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				  void *data, void *user_data)
+{
+    lp_reset(lp);
+    return 0;
+}
+
+int allon_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				  void *data, void *user_data)
+{
+    lp_allon(lp,argv[0]->i);
+    return 0;
+}
+
+int led_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				void *data, void *user_data)
+{
+	int row, col, red, green, mode;
+	row			= argv[0]->i;
+	col			= argv[1]->i;
+	switch (argv[2]->i){
+	case 0: red = red_off; break;
+	case 1: red = red_low; break;
+	case 2: red = red_medium; break;
+	case 3: red = red_full; break;
+	default: red = 0;
 	}
-    }
-    
-    if (dest == NULL) {
-	fprintf(stderr, "destination is mandatory\n");
-    }
-    
-    // Launchpad initialization
-    lp = lp_register();
-    
-    // OSC initialization
-    destination = lo_address_new_from_url(dest);
-    server_thread = lo_server_thread_new(port,error_handler);
-    lo_server_add_method(server_thread, "/lp/press","iii",press_handler,NULL);
-    
-    lp2osc();
-    
-    lp_deregister(lp);
+
+	switch (argv[2]->i){
+	case 0: green = green_off; break;
+	case 1: green = green_low; break;
+	case 2: green = green_medium; break;
+	case 3: green = green_full; break;
+	default: green = 0;
+	}
+	
+	if (lp->displaying == lp->updating) {
+		mode = copy;
+	} else {
+		mode = nothing;
+	}
+	
+	lp_led(lp,row,col,lp_velocity(red,green,mode));
+	return 0;
 }

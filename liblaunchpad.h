@@ -85,7 +85,7 @@ enum green {
  */
 enum led_mode {
     nothing	= 0x00,
-    copy	= 0x04,
+    copy	= 0x12,
     clear	= 0x08 };
 
 /**
@@ -186,8 +186,7 @@ int lp_setmode(struct launchpad* lp, enum buffer displaying, enum buffer updatin
  *
  * displaying and writing on the same buffer
  * \param buf the buffer used
- */
-int lp_normal_mode(struct launchpad* lp, enum buffer buf);
+ */int lp_normal_mode(struct launchpad* lp, enum buffer buf);
 
 /** 
  * displaying one buffer and writing on the other. if it is already the case,
