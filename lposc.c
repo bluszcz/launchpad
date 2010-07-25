@@ -33,6 +33,9 @@
 
 struct launchpad *lp;
 int done = 0;
+enum buffer displaying = buffer0;
+enum buffer updating = buffer0;
+enum bool flashing = false;
 
 void error(int num, const char *m, const char *path);
 
@@ -45,10 +48,10 @@ int quit_handler(const char *path, const char *types, lo_arg **argv, int argc,
 int reset_handler(const char *path, const char *types, lo_arg **argv, int argc,
 				  void *data, void *user_data);
 
-int allon_handler(const char *path, const char *types, lo_arg **argv, int argc,
-				  void *data, void *user_data);
-
 int led_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				void *data, void *user_data);
+
+int mode_handler(const char *path, const char *types, lo_arg **argv, int argc,
 				void *data, void *user_data);
 
 int main()
@@ -61,13 +64,15 @@ int main()
     
     /* add method that will match any path and args */
     lo_server_thread_add_method(st, NULL, NULL, generic_handler, NULL);
-
+    
     /* add method that will match the path /quit with no args */
     lo_server_thread_add_method(st, "/quit", "", quit_handler, NULL);
-    
     lo_server_thread_add_method(st, "/reset", "", reset_handler, NULL);
-    lo_server_thread_add_method(st, "/allon", "i", allon_handler, NULL);
-	lo_server_thread_add_method(st, "/led", "iiii", led_handler, NULL);	
+    
+    lo_server_thread_add_method(st, "/led", "ii", led_handler, NULL);	
+    lo_server_thread_add_method(st, "/led", "iii", led_handler, NULL);	
+    
+    lo_server_thread_add_method(st, "/mode", "iiii", mode_handler, NULL);
     
     lo_server_thread_start(st);
     
@@ -99,7 +104,7 @@ int generic_handler(const char *path, const char *types, lo_arg **argv,
     }
     printf("\n");
     fflush(stdout);
-
+	
     return 1;
 }
 
@@ -114,47 +119,34 @@ int quit_handler(const char *path, const char *types, lo_arg **argv, int argc,
 }
 
 int reset_handler(const char *path, const char *types, lo_arg **argv, int argc,
-				  void *data, void *user_data)
+				 void *data, void *user_data)
 {
-    lp_reset(lp);
-    return 0;
-}
-
-int allon_handler(const char *path, const char *types, lo_arg **argv, int argc,
-				  void *data, void *user_data)
-{
-    lp_allon(lp,argv[0]->i);
-    return 0;
+	lp_reset(lp);
+	return 0;
 }
 
 int led_handler(const char *path, const char *types, lo_arg **argv, int argc,
 				void *data, void *user_data)
 {
-	int row, col, red, green, mode;
-	row			= argv[0]->i;
-	col			= argv[1]->i;
-	switch (argv[2]->i){
-	case 0: red = red_off; break;
-	case 1: red = red_low; break;
-	case 2: red = red_medium; break;
-	case 3: red = red_full; break;
-	default: red = 0;
+    int row, col,velocity;
+    row			= argv[0]->i;
+    col			= argv[1]->i;
+	
+	if (strcmp(types,"ii") == 0) {
+		velocity = red_full + green_full + led_copy;
+		lp_led(lp,row,col,velocity);
+		return 0;
+	} else if(strcmp(types,"iii") == 0) {
+		velocity = argv[2]->i;
+		lp_led(lp,row,col,velocity);
+		return 0;
 	}
+}
 
-	switch (argv[2]->i){
-	case 0: green = green_off; break;
-	case 1: green = green_low; break;
-	case 2: green = green_medium; break;
-	case 3: green = green_full; break;
-	default: green = 0;
-	}
-	
-	if (lp->displaying == lp->updating) {
-		mode = copy;
-	} else {
-		mode = nothing;
-	}
-	
-	lp_led(lp,row,col,lp_velocity(red,green,mode));
-	return 0;
+int led_handler(const char *path, const char *types, lo_arg **argv, int argc,
+				void *data, void *user_data)
+{
+    
+    lp_setmode(lp, displaying, updating, flashing, copy);
+    return 0;
 }
