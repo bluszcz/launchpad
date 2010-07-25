@@ -132,13 +132,13 @@ void lp_receive(struct launchpad* lp)
     // first byte: which key is pressed
     switch(lp->prefix) {
     case NOTE:
-	snd_seq_ev_set_noteon(&lp->event, 1,
+	snd_seq_ev_set_noteon(&lp->event, 0,
 			      lp->rdata[lp->parse_at],
 			      lp->rdata[lp->parse_at+1]);
 	break;
 	
     case CTRL:
-	snd_seq_ev_set_controller(&lp->event, 1, 
+	snd_seq_ev_set_controller(&lp->event, 0, 
 				  lp->rdata[lp->parse_at], 
 				  lp->rdata[lp->parse_at+1]);	
 	break;
