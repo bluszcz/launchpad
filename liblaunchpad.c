@@ -85,7 +85,7 @@ struct launchpad* lp_register()
     lp->received = 0;
 
     // reset launchpad
-    lp_send3(lp,CTRL,0,0);
+    lp_reset(lp);
     
     return lp;
 }
@@ -132,17 +132,9 @@ void lp_receive(struct launchpad* lp)
     // first byte: which key is pressed
     switch(lp->prefix) {
     case NOTE:
-	if (lp->rdata[lp->parse_at+1] == 127) {
-	    // note on
-	    snd_seq_ev_set_noteon(&lp->event, 1, 
-				  lp->rdata[lp->parse_at], 
-				  lp->rdata[lp->parse_at+1]);
-	} else {
-	    // note off
-	    snd_seq_ev_set_noteoff(&lp->event, 1, 
-				   lp->rdata[lp->parse_at], 
-				   lp->rdata[lp->parse_at+1]);
-	}
+	snd_seq_ev_set_noteon(&lp->event, 1,
+			      lp->rdata[lp->parse_at],
+			      lp->rdata[lp->parse_at+1]);
 	break;
 	
     case CTRL:
@@ -178,4 +170,46 @@ int lp_send3(struct launchpad* lp, unsigned int data0, unsigned int data1, unsig
     lp->tdata[1] = data1;
     lp->tdata[2] = data2;
     return lp_send(lp,3);
+}
+
+int lp_check(struct launchpad* lp, int intensity)
+{
+    if (intensity > 2) {
+	intensity = 2;
+    }
+    
+    if (intensity < 1) {
+	intensity = 1;
+    }
+    
+    return lp_send3(lp,CTRL,0,124+intensity);
+}
+
+int lp_reset(struct launchpad* lp)
+{
+    return lp_send3(lp,CTRL,0,0);
+}
+
+int lp_setmode(struct launchpad* lp, enum buffer displaying, enum buffer updating, enum bool flashing, enum bool copy)
+{
+    int v = 32;
+    // displaying buffer
+    v += displaying;
+    // updating buffer
+    v += updating * 4;
+    // flashing
+    v += flashing * 8;
+    // copying the new displaying buffer to the new updating buffer
+    v += copy * 16;
+    
+    return lp_send3(lp,CTRL,0,v);
+}
+
+int lp_led(struct launchpad *lp, int row, int col, int velocity)
+{
+    if (row == -1) {
+	return lp_send3(lp, CTRL, 104 + col, velocity);
+    } else {
+	return lp_send3(lp, NOTE, row*16 + col, velocity);
+    }
 }

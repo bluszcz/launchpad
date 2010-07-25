@@ -63,6 +63,46 @@ struct launchpad {
     snd_seq_event_t event;		       	//! store the parsed midi event
 };
 
+/**
+ * a boolean type
+ */
+enum bool {
+    false = 0,
+    true  = 1 };
+
+/**
+ * buffer identifiers. the launchpad has two buffers
+ */
+enum buffer {
+    buffer0 = 0,
+    buffer1 = 1 };
+
+/**
+ * different intensities of red
+ */
+enum red {
+	red_low		= 0x01,
+	red_medium	= 0x02,
+	red_full	= 0x03 };
+
+/**
+ * different intensities of green
+ */
+enum green {
+    green_low		= 0x10,
+    green_medium	= 0x20,
+    green_full		= 0x30 };
+
+/**
+ * when setting a led, you can either :
+ * - set only one buffer
+ * - set both buffers
+ * - set one buffer and clear the other
+ */
+enum led_mode {
+    led_copy	= 0x0C,
+    led_clear	= 0x08 };
+
 /** 
  * register the launchpad 
  */
@@ -98,3 +138,23 @@ int lp_send(struct launchpad* lp, int size);
  * \param data2 third byte
  */
 int lp_send3(struct launchpad* lp, unsigned int data0, unsigned int data1, unsigned int data2);
+
+/**
+ * turn on all the leds
+ * \param intensity the leds' intensity, between 1 and 3
+ */
+int lp_check(struct launchpad* lp, int intensity);
+
+/**
+ * reset the launchpad
+ */
+int lp_reset(struct launchpad* lp);
+
+/** set the launchpad's mode
+ *
+ * \param displaying the buffer to display
+ * \param updating the buffer to update
+ * \param flashing whether the launchpad should display both buffers alternatively
+ * \param copy whether we should copy the content of the newly displaying buffer into the newly updating buffer
+ */
+int lp_setmode(struct launchpad* lp, enum buffer displaying, enum buffer updating, enum bool flashing, enum bool copy);
