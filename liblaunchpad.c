@@ -80,7 +80,7 @@ struct launchpad* lp_register()
     }
         
     // initialize the protocol's state
-    lp->prefix = NOTE;
+    lp->event[0] = NOTE;
     lp->parse_at = 0;
     lp->received = 0;
 
@@ -122,31 +122,10 @@ void lp_receive(struct launchpad* lp)
 
     // check if the first byte is a prefix byte
     if (lp->rdata[lp->parse_at] == NOTE || lp->rdata[lp->parse_at] == CTRL) {
-	lp->prefix = lp->rdata[lp->parse_at];
-	lp->parse_at++;
+		lp->event[0] = lp->rdata[lp->parse_at++];
     }
-    
-    // clean the midi event before writing data
-    snd_seq_ev_clear(&lp->event);
-    
-    // first byte: which key is pressed
-    switch(lp->prefix) {
-    case NOTE:
-	snd_seq_ev_set_noteon(&lp->event, 0,
-			      lp->rdata[lp->parse_at],
-			      lp->rdata[lp->parse_at+1]);
-	break;
-	
-    case CTRL:
-	snd_seq_ev_set_controller(&lp->event, 0, 
-				  lp->rdata[lp->parse_at], 
-				  lp->rdata[lp->parse_at+1]);	
-	break;
-    }
-    
-    
-    //move offset to the next event
-    lp->parse_at += 2;
+	lp->event[1] = lp->rdata[lp->parse_at++];
+	lp->event[2] = lp->rdata[lp->parse_at++];
 }
 
 int lp_send(struct launchpad* lp, int size)
@@ -205,11 +184,26 @@ int lp_setmode(struct launchpad* lp, enum buffer displaying, enum buffer updatin
     return lp_send3(lp,CTRL,0,v);
 }
 
-int lp_led(struct launchpad *lp, int row, int col, int velocity)
+int lp_matrix(struct launchpad *lp, int row, int col, int velocity)
 {
-    if (row == -1) {
-	return lp_send3(lp, CTRL, 104 + col, velocity);
-    } else {
+	if (row < 0 || row > 7 || col < 0 || col > 7)
+		return 0;
+	
 	return lp_send3(lp, NOTE, row*16 + col, velocity);
-    }
+}
+
+int lp_scene(struct launchpad *lp, int row, int velocity)
+{
+	if (row < 0 || row > 7)
+		return 0;
+	
+	return lp_send3(lp, NOTE, row*16 + 8, velocity);
+}
+
+int lp_ctrl(struct launchpad *lp, int col, int velocity)
+{
+	if (col < 0 || col > 7)
+		return 0;
+	
+	return lp_send3(lp, CTRL, 104+col, velocity);
 }

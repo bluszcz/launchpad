@@ -28,8 +28,6 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <libusb-1.0/libusb.h>
-#include <signal.h>
-#include <alsa/asoundlib.h>
 
 // launchpad identifiers
 #define ID_VENDOR  0x1235
@@ -55,12 +53,11 @@ struct launchpad {
     struct libusb_device_handle* device;	//! usb device
     unsigned char* rdata;			//! buffer to store incoming data
     unsigned char* tdata;			//! buffer to store outgoing data
-    
+	
     // handling the protocol's state
-    unsigned int prefix;			//! current prefix byte (CTRL or NOTE)
     int received;				//! amount of data currently stored in rdata
     int parse_at;				//! where to read in rdata to get the next event
-    snd_seq_event_t event;		       	//! store the parsed midi event
+	int event[3]; //! store the parsed midi event
 };
 
 /**
@@ -158,3 +155,15 @@ int lp_reset(struct launchpad* lp);
  * \param copy whether we should copy the content of the newly displaying buffer into the newly updating buffer
  */
 int lp_setmode(struct launchpad* lp, enum buffer displaying, enum buffer updating, enum bool flashing, enum bool copy);
+
+/** turn on/off the matrix
+ */
+int lp_matrix(struct launchpad *lp, int row, int col, int velocity);
+
+/** turn on/off the scene
+ */
+int lp_scene(struct launchpad *lp, int row, int velocity);
+
+/** turn on/off the control
+ */
+int lp_ctrl(struct launchpad *lp, int col, int velocity);

@@ -31,6 +31,7 @@
 // globals
 struct launchpad* lp;
 snd_seq_t* midi_client;
+
 int midi_in;
 int midi_out;
 
@@ -73,17 +74,31 @@ void midi_deregister()
 void* lp2midi(void* nothing)
 {
     printf("waiting for launchpad events\n");
-    
-    int recv,i;
+	snd_seq_event_t event;
     
     while (1) {
-	lp_receive(lp);	
-	snd_seq_ev_set_source(&lp->event, midi_out);	// set the output port number
-	snd_seq_ev_set_subs(&lp->event);		// broadcast to subscribers
-	snd_seq_ev_set_direct(&lp->event);		// send now, don't put in queue
-	// send the message
-	snd_seq_event_output(midi_client, &lp->event);
-	snd_seq_drain_output(midi_client);
+		// wait for an event
+		lp_receive(lp);
+
+		// setup
+		snd_seq_ev_clear(&event);
+		snd_seq_ev_set_source(&event, midi_out);	// set the output port number
+		snd_seq_ev_set_subs(&event);		// broadcast to subscribers
+		
+		// fill the event
+		switch(lp->event[0]) {
+		case NOTE:
+			snd_seq_ev_set_noteon(&event, 0, lp->event[1], lp->event[2]);
+			break;
+		case CTRL:
+			snd_seq_ev_set_controller(&event, 0, lp->event[1], lp->event[2]);
+			break;
+		}
+		
+		// send now
+		snd_seq_ev_set_direct(&event);		
+		snd_seq_event_output(midi_client, &event);
+		snd_seq_drain_output(midi_client);
     }
 }
 
