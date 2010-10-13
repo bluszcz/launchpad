@@ -1,1 +1,31 @@
 a library and some program to interact with the launchpad.
+
+LPMIDI
+------
+
+this program allows you to communicate with the launchpad through alsa-midi ports.
+
+LPOSC
+-----
+
+this program allows you to communicate with the launchpad through an OSC
+server. Here are the messages currently supported:
+
+    /lp/reset -- reset the launchpad
+    /lp/matrix iii -- (row, col, vel) change the color of a matrix button
+    /lp/scene ii -- (row, vel) change the color of a scene button (right column)
+    /lp/ctrl ii -- (col, val) change the color of a control button (top row)
+    /lp/dest s -- (address) set the address where events should be sent.
+
+vel is for velocity. please refer to novation's manual for more information. to
+keep it simple, 0 = off, 127 = yellow.
+
+events sent:
+
+    /lp/matrix iii -- (row, col, vel)
+    /lp/scene ii -- (row, vel)
+    /lp/ctrl ii -- (col, vel)
+    
+    vel = 127 => press
+    vel = 0   => release
+
